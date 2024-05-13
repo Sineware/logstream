@@ -1,4 +1,4 @@
-# LogStream
+# Sineware LogStream
 
 Collect, Embed, and Query logs from anywhere. LogStream accept standard syslogs over UDP from clients, vectorizes the text, and stores it in Postgres ([pgvector](https://github.com/pgvector/pgvector)).
 

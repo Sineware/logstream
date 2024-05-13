@@ -6,7 +6,7 @@ export async function initExpress(app: Express, pool: pg.Pool, ollama: Ollama, q
         const query = req.body.query;
         console.log(req.body);
         let embed = await ollama.embeddings({
-            model: "nomic-embed-text",
+            model: process.env.EMBED_MODEL as string,
             prompt: query as string,
         });
         res.json(embed.embedding);
@@ -19,13 +19,13 @@ export async function initExpress(app: Express, pool: pg.Pool, ollama: Ollama, q
         } = req.body;
         console.log(req.body);
         const prompt = "The current date and time is: " + new Date() +
-        "-> Latest Logs: \n" + latest_logs +
-        "-> Other Logs Potentially Related to the Query: \n" + logs +
+        "\n-> Latest Logs: \n" + latest_logs +
+        "\n-> Other Logs Potentially Related to the Query: \n" + logs +
         "\n\nQuestion: " + query;
         console.log("Prompt: " + prompt);   
 
         let response = await ollama.generate({
-            model: "llama3:8b-instruct-q8_0",
+            model: process.env.QUERY_MODEL as string,
             system: "You are a helpful assistant that reviews syslog output from servers. You are asked to provide a summary of the logs considering DevOps, SysOps and Cybersecurity perspectives.",
             prompt: prompt,
             stream: false

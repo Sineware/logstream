@@ -6,10 +6,18 @@ import dgram from 'node:dgram';
 import { initExpress } from "./api/express";
 const server = dgram.createSocket('udp4');
 
-const pool = new pg.Pool();
+const pool = new pg.Pool({
+    user: process.env.POSTGRES_USER,
+    host: process.env.POSTGRES_HOST,
+    database: process.env.POSTGRES_DB,
+    password: process.env.POSTGRES_PASSWORD,
+    port: parseInt(process.env.POSTGRES_PORT || "5432"),
+});
+
 const ollama = new Ollama({
     host: process.env.OLLAMA_HOST + ":" + process.env.OLLAMA_PORT,
 });
+
 const queue = new Queue('ollama', {
     redis: {
         host: 'valkey'
@@ -33,7 +41,7 @@ server.on('message', async (msg: any, rinfo:any) => {
 
 server.on('listening', async () => {
   const address = server.address();
-  console.log(`server listening ${address.address}:${address.port}`);
+  console.log(`Syslog ingest listening on ${address.address}:${address.port}`);
 });
 
 async function main() {
@@ -52,10 +60,16 @@ async function main() {
     `;
     await pool.query(createTable);
 
-    // pull nomic-text-embed model ollama
+    console.log("Pulling " + process.env.EMBED_MODEL + " and " + process.env.QUERY_MODEL + " models from Ollama...");
+    // pull embeddings model
     await ollama.pull({
-        model: "nomic-embed-text"
+        model: process.env.EMBED_MODEL as string,
     });
+    // pull query model
+    await ollama.pull({
+        model: process.env.QUERY_MODEL as string,
+    });
+
 
     queue.process(async (job: any, done: any) => {
         const embedding = await ollama.embeddings({
@@ -73,6 +87,15 @@ async function main() {
         console.log("Queue length: ", await queue.checkHealth());
     }, 10000);
 
+    // drop events older than DROP_EVENTS_OLDER_HOURS
+    const DROP_EVENTS_OLDER_HOURS = parseInt(process.env.DROP_EVENTS_OLDER_HOURS || "0");
+    if(DROP_EVENTS_OLDER_HOURS > 0) {
+        setInterval(async () => {
+            const dropQuery = `DELETE FROM logs WHERE timestamp < NOW() - INTERVAL '${DROP_EVENTS_OLDER_HOURS} hours';`;
+            await pool.query(dropQuery);
+        }, 1000 * 60 * 60);
+    }
+
     server.bind(41234);
 
     const app = express()
@@ -83,7 +106,7 @@ async function main() {
     await initExpress(app, pool, ollama, queue);
 
     app.listen(port, () => {
-        console.log(`API app listening on port ${port}`)
+        console.log(`API endpoints listening on ${port}`)
     })
 
 }

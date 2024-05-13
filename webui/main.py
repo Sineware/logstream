@@ -5,21 +5,17 @@ import gradio as gr
 import pandas as pd
 import psycopg2
 
-print("1")
-
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_HOST = os.getenv("DB_HOST")
-PORT = 5432
-DB_NAME = "postgres"
+DB_USER = os.getenv("POSTGRES_USER")
+DB_PASSWORD = os.getenv("POSTGRES_PASSWORD")
+DB_HOST = os.getenv("POSTGRES_HOST")
+PORT = os.getenv("POSTGRES_PORT")
+DB_NAME = os.getenv("POSTGRES_DB")
 
 API_URL = "http://app:3000"
 
 conn_str = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}?port={PORT}&dbname={DB_NAME}"
 
 conn = psycopg2.connect(conn_str)
-
-print("2")
 
 # table: logs (
 #             id SERIAL PRIMARY KEY,
@@ -51,7 +47,6 @@ def embedding_search(query):
     response_str = str(response.json())
     print(response_str)
 
-
     curr = conn.cursor()
     curr.execute("SELECT type, message, timestamp, source FROM logs ORDER BY embedding <-> '{}' LIMIT 10".format(response_str))
     rows = curr.fetchall()
@@ -69,7 +64,7 @@ def ask_llm(query):
     print(response.json())
     return str(response.json())
 def query_results_ask_llm(frame):
-    logs = json.dumps(frame, indent=4, sort_keys=True, default=str)
+    logs = frame.to_csv(index=False)
     response = requests.post(f"{API_URL}/ask", json={
         "latest_logs": logs,
         "logs": "",
@@ -82,7 +77,6 @@ def get_total_logs():
     cur.execute("SELECT COUNT(*) FROM logs")
     rows = cur.fetchall()
     return rows[0][0]
-
 def get_logs(query, option):
     cur = conn.cursor()
     if option == "sql":
@@ -105,7 +99,12 @@ def get_queue_health():
     response = requests.get(f"{API_URL}/queue_health")
     return str(response.json())
 
-print("3")
+def get_ssh_attempts():
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM logs WHERE message LIKE '%sshd%' ORDER BY timestamp DESC LIMIT 100")
+    rows = cur.fetchall()
+    return rows
+
 
 with gr.Blocks() as overview:
     with gr.Row():
@@ -127,7 +126,7 @@ with gr.Blocks() as overview:
             option = gr.Radio(
                 label="Select",
                 choices=["search", "embeddings_search", "sql"],
-                value="sql",
+                value="search",
             )
             submit = gr.Button("Submit")
             gr.Label("Utilities")
@@ -143,8 +142,8 @@ with gr.Blocks() as overview:
         submit_latest.click(get_latest_logs, outputs=[frame], api_name="get_latest_logs")
         # Once frame is updated, call the llm to explain the logs
     with gr.Row():
-        llm_explain = gr.TextArea(label="LLM Explanation")
-        frame.change(query_results_ask_llm, inputs=[frame], outputs=[llm_explain], api_name="query_results_ask_llm")
+        llm_explanation = gr.TextArea(label="LLM Explanation")
+        frame.change(query_results_ask_llm, inputs=[frame], outputs=[llm_explanation], api_name="query_results_ask_llm")
 
 # Tab 2 - LLM Chat
 with gr.Blocks() as llm_view:
@@ -160,8 +159,23 @@ with gr.Blocks() as llm_view:
         submit_llm.click(ask_llm, inputs=[query_llm], outputs=[res_llm], api_name="ask_llm")   
 
 # Tab 3 - Security Overview (ex. list all ssh attempts)
-
-tabs = gr.TabbedInterface([overview, llm_view], title="Sineware LogStream")
+with gr.Blocks() as security_view:
+    with gr.Row():
+        gr.Label("Security Overview")
+    with gr.Row():
+        with gr.Column():
+            submit_ssh = gr.Button("Get SSH Attempts")
+        with gr.Column():
+            ssh_count = gr.Label(value=0, label="Total Events")
+            ssh_frame = gr.Dataframe(
+                value=[],
+                headers=["type", "message", "timestamp", "source"],
+                datatype=["str", "str", "date", "str"],
+            )
+        submit_ssh.click(get_ssh_attempts, outputs=[ssh_frame], api_name="get_ssh_attempts")
+        ssh_frame.change(lambda x: len(x), inputs=[ssh_frame], outputs=[ssh_count], api_name="ssh_count")
+        
+tabs = gr.TabbedInterface([overview, llm_view, security_view], ["Dashboard", "Ask an LLM", "Security Overview"], title="Sineware LogStream")
 tabs.launch(
     share=False,
     server_name="0.0.0.0"

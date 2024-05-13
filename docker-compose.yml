@@ -9,13 +9,11 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/queue_health"]
       interval: 10s
-    environment:
-      - PGHOST=pgvector
-      - PGUSER=postgres
-      - PGDATABASE=postgres
-      - PGPASSWORD=postgres
-      - OLLAMA_HOST=192.168.11.188
-      - OLLAMA_PORT=11435
+    env_file:
+      - path: ./default.env
+        required: true
+      - path: ./override.env
+        required: false
     depends_on:
       - pgvector
       - valkey
@@ -28,11 +26,11 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:7860"]
       interval: 10s
-    environment:
-      - DB_HOST=pgvector
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - DB_NAME=postgres
+    env_file:
+      - path: default.env
+        required: true
+      - path: override.env
+        required: false
     depends_on:
       app: 
         condition: service_healthy
@@ -40,16 +38,19 @@ services:
   # Backend Services
   pgvector:
     image: pgvector/pgvector:pg16
-    environment:
-      - POSTGRES_PASSWORD=postgres
-    ports:
-      - 5432:5432
+    env_file:
+      - path: default.env
+        required: true
+      - path: override.env
+        required: false
     volumes:
       - ./runtime-data/pgvector:/var/lib/postgresql/data
   adminer:
     image: adminer
     ports:
-      - 8080:8080
+      - 7861:8080
+    environment:
+      - ADMINER_DEFAULT_SERVER=pgvector
   valkey:
     image: valkey/valkey:7.2
     volumes:

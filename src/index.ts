@@ -35,8 +35,7 @@ server.on('message', async (msg: any, rinfo:any) => {
     "message": msg.toString(),
     "timestamp": new Date().toISOString(),
     "source": rinfo.address + ":" + rinfo.port
-  }).timeout(5000).save();
-
+  }).timeout(300000).save();
 });
 
 server.on('listening', async () => {
@@ -73,9 +72,10 @@ async function main() {
 
     queue.process(async (job: any, done: any) => {
         const embedding = await ollama.embeddings({
-            model: "nomic-embed-text",
+            model: process.env.EMBED_MODEL as string,
             prompt: job.data.message
         });
+
         await pool.query('INSERT INTO logs(type, message, timestamp, source, embedding) VALUES($1, $2, $3, $4, $5)', 
             [job.data.type, job.data.message, job.data.timestamp, job.data.source, JSON.stringify(embedding.embedding)]
         );
